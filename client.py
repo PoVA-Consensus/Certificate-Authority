@@ -93,7 +93,7 @@ def generateRootCA(client,commonName):
     try:
         
         crl_config_response = client.secrets.pki.set_crl_configuration(
-        expiry='8650h',
+        expiry='86500h',
         disable=False
         )
         
@@ -127,7 +127,7 @@ def generateIntermediateCA(client,commonName):
     #print('Intermediate certificate CSR: {}'.format(response['data']['csr']))
     sign_intermediate_response = client.secrets.pki.sign_intermediate(
     csr=response['data']['csr'],
-    common_name=commonName,
+    common_name=commonName
     )
     logger.info("Successfully signed Intermediate CA Certificate")
     if sign_intermediate_response['warnings'] != None:
@@ -156,10 +156,73 @@ def readPKIURL(client):
     response = client.secrets.pki.read_urls()
     print('PKI urls: {}'.format(response))
 
+
+def createRole(client, role_name, allow = 'false', ttl = '8794h'):
+    '''
+    This function creates a role.
+    Args:
+        client: an initialised instance of Vault via HVAC
+        role_name: Name of the PKI role to be created
+        allow: flag to set local host permissions with default set as false
+        ttl: Time to live with default set as 8794h ~1 year
+    '''
+    try:
+        response = client.secrets.pki.create_or_update_role(
+            role_name,
+            {
+                'ttl': ttl,
+                'allow_localhost': 'true',
+                'allow_subdomains': 'true',
+                'allowed_domains': ["e48BC-B809"]
+            }
+        )
+        logger.info('Created role: %s', role_name)  
+        logger.info(response)
+
+    except Exception as e:
+        logger.error(e)
+
+def readRole(client, role_name):
+    '''
+    This function reads a given role.
+    Args:
+        client: an initialised instance of Vault via HVAC
+        role_name: Name of the PKI role to be read
+    '''
+    try:
+        read_role_response = client.secrets.pki.read_role(role_name)
+        print('Role definition: {}'.format(read_role_response))
+    except Exception as e:
+        logger.error("Could not read role: %s", role_name)
+        logger.error(e)
+
+def listRoles(client):
+    '''
+    This function reads a given role.
+    Args:
+        client: an initialised instance of Vault via HVAC
+    '''
+    list_roles_response = client.secrets.pki.list_roles()
+    print('List of available roles: {}'.format(list_roles_response))
+
+def generateCertificate(client, role_name, deviceID):
+    try:
+        response = client.secrets.pki.generate_certificate(
+            name = role_name,
+            common_name = "EA7553CD-A667-48BC-B809.e48BC-B809"
+            )
+        print('Certificate: {}'.format(response))
+    except Exception as e:
+        logger.error(e)
 if __name__ == '__main__':
     client = init_server()
+    delete_root_response = client.secrets.pki.delete_root()
 
-    generateRootCA(client,"IoT CA")
-    generateIntermediateCA(client,"IoT Intermediate CA")
+    generateRootCA(client,"e48BC-B809")
+    generateIntermediateCA(client,"e48BC-B809")
+    createRole(client, "Certificates")
+    readRole(client, "Certificates")
+    listRoles(client)
+    generateCertificate(client, "Certificates", "EA7553CD-A667-48BC-B809")
 
 
