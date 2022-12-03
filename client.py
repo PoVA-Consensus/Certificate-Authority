@@ -2,6 +2,10 @@ import hvac
 import datetime
 import logging
 import configparser
+import requests
+import json
+import argparse
+import sys
 
 # Set the logging level to debug
 class ColourLogs(logging.Formatter):
@@ -11,12 +15,13 @@ class ColourLogs(logging.Formatter):
     red = '\x1b[38;5;196m'
     bold_red = '\x1b[31;1m'
     reset = '\x1b[0m'
+    blue = '\033[34m'
 
     def __init__(self, fmt):
         super().__init__()
         self.fmt = fmt
         self.FORMATS = {
-            logging.DEBUG: self.grey + self.fmt + self.reset,
+            logging.DEBUG: self.blue + self.fmt + self.reset,
             logging.INFO: self.green + self.fmt + self.reset,
             logging.WARNING: self.yellow + self.fmt + self.reset,
             logging.ERROR: self.red + self.fmt + self.reset,
@@ -41,7 +46,7 @@ stdout_handler.setFormatter(ColourLogs(fmt))
 
 # Create file handler for logging to a file (logs all five levels)
 today = datetime.date.today()
-file_handler = logging.FileHandler('client_{}.log'.format(today.strftime('%Y_%m_%d')))
+file_handler = logging.FileHandler('logs/client_{}.log'.format(today.strftime('%Y_%m_%d')))
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(logging.Formatter(fmt))
 
@@ -145,7 +150,7 @@ def readRoles(client):
         client: an initialised instance of Vault via HVAC
     '''
     list_roles = client.secrets.pki.list_roles()
-    print('List of available roles: {}'.format(list_roles))
+    #print('List of available roles: {}'.format(list_roles))
 
 def readPKIURL(client):
     '''
@@ -154,15 +159,16 @@ def readPKIURL(client):
         client: an initialised instance of Vault via HVAC
     '''
     response = client.secrets.pki.read_urls()
-    print('PKI urls: {}'.format(response))
+    #print('PKI urls: {}'.format(response))
 
 
-def createRole(client, role_name, allow = 'false', ttl = '8794h'):
+def createRole(client, role_name, allowed, allow = 'false', ttl = '8794h'):
     '''
     This function creates a role.
     Args:
         client: an initialised instance of Vault via HVAC
         role_name: Name of the PKI role to be created
+        allowed: domain that is allowed by the role
         allow: flag to set local host permissions with default set as false
         ttl: Time to live with default set as 8794h ~1 year
     '''
@@ -173,7 +179,7 @@ def createRole(client, role_name, allow = 'false', ttl = '8794h'):
                 'ttl': ttl,
                 'allow_localhost': 'true',
                 'allow_subdomains': 'true',
-                'allowed_domains': ["e48BC-B809"]
+                'allowed_domains': [allowed]
             }
         )
         logger.info('Created role: %s', role_name)  
@@ -205,24 +211,77 @@ def listRoles(client):
     list_roles_response = client.secrets.pki.list_roles()
     print('List of available roles: {}'.format(list_roles_response))
 
-def generateCertificate(client, role_name, deviceID):
+def generateCertificate(role_name, issue_url, payload_path):
     try:
-        response = client.secrets.pki.generate_certificate(
-            name = role_name,
-            common_name = "EA7553CD-A667-48BC-B809.e48BC-B809"
-            )
-        print('Certificate: {}'.format(response))
+        
+        headers = {
+            'X-Vault-Token': 'hvs.LIHlZAB59EnMWTJFIPaOo6qy',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            }
+
+        try:
+            with open(payload_path) as f:
+                data = f.read().replace('\n', '')
+        except Exception as e:
+            logger.error(e)
+            logger.error("Aborted Device certificate generation")
+            sys.exit()
+        
+        data_json = json.loads(data)
+        #print(data_json['common_name'])
+
+        response = requests.post(issue_url + role_name, headers=headers, data=data)
+        #print(response.content)
+        response_dict = json.loads(str(response.content, 'UTF-8'))
+
+        #print(response_dict['data']['certificate'])
+        f = open(data_json['common_name'] + ".pem", "w")
+        f.write(response_dict['data']['certificate'])
+        f.close()
+
+        logger.info(f"Certificate written to {data_json['common_name']}.pem")
+
+        f = open(data_json['common_name'] + ".key", "w")
+        f.write(response_dict['data']['private_key'])
+        f.close()
+
+        logger.info(f"Private Key written to {data_json['common_name']}.key")
+
     except Exception as e:
         logger.error(e)
+
+
+def setRoleCA():
+    config = configparser.ConfigParser()
+    try:
+        config.read('config.ini')
+        logger.debug("Read configuration for role and root CA")
+        role = config['mountPoints']['ROLE']
+        root_issuer = config['mountPoints']['CA']
+        cert_issue = config['mountPoints']['ISSUE_CERT']
+        return role, root_issuer, cert_issue
+        
+    except Exception as e:
+        logger.error(e)
+
 if __name__ == '__main__':
-    client = init_server()
-    delete_root_response = client.secrets.pki.delete_root()
 
-    generateRootCA(client,"e48BC-B809")
-    generateIntermediateCA(client,"e48BC-B809")
-    createRole(client, "Certificates")
-    readRole(client, "Certificates")
-    listRoles(client)
-    generateCertificate(client, "Certificates", "EA7553CD-A667-48BC-B809")
+    try:
+        client = init_server()
+        delete_root_response = client.secrets.pki.delete_root()
+    except Exception as e:
+        logger.error(e)
+        sys.exit()
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-s", required = True, type = str, help = "Enter the path to the file containing details for generating the device certificate")
+    args = parser.parse_args()
+    payload_path = args.s
 
+    role, root_issuer, cert_issue = setRoleCA()
+    generateRootCA(client, root_issuer)
+    generateIntermediateCA(client, root_issuer)
+    createRole(client, role, root_issuer)
+    #readRole(client, role)
+    #listRoles(client)
+    generateCertificate(role, cert_issue, payload_path)

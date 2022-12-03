@@ -3,3 +3,6 @@ unseal.txt
 *.hcl
 *.pem
 *.ini
+*.key
+keys.txt
+*.json
