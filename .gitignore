@@ -6,3 +6,7 @@ unseal.txt
 *.key
 keys.txt
 *.json
+init.txt
+core/
+logical/
+sys/

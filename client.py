@@ -54,46 +54,63 @@ file_handler.setFormatter(logging.Formatter(fmt))
 logger.addHandler(stdout_handler)
 logger.addHandler(file_handler)
 
-def init_server():
+def init_server(config):
     '''
     This function initialises the HVAC client for Vault.
+    Args:
+        config: a configparser object
     Return:
         client: HVAC Client object
     '''
-    client = hvac.Client(url = "http://127.0.0.1:8200")
+    client = hvac.Client(url = config['mountPoints']['INIT_URL'])
     try:
         logger.info("The Vault Client has been authenticated")
         return client
     except:
         logger.error("The client is not authenticated. Check if Vault server is running.")
 
-def setMountPoints(client):
+def readConfig():
     '''
-    This function mounts the certificate issuing URL and CRL distribution point.
-    Args:
-        client: an initialised instance of Vault via HVAC
+    This function reads the configuration file and returns the configparser object.
+    Return:
+        config: a configparser object
     '''
     config = configparser.ConfigParser()
     try:
         config.read('config.ini')
-        logger.debug("Read configuration for mount points")
+        logger.debug("Successfully read config file")
+        return config
+    except Exception as e:
+        logger.error("Cannot read config file")
+        logger.error(e)
+
+def setMountPoints(config, client):
+    '''
+    This function mounts the certificate issuing URL and CRL distribution point.
+    Args:
+        config: a configparser object
+        client: an initialised instance of Vault via HVAC
+    '''
+    try:
         set_urls_response = client.secrets.pki.set_urls(
             {
-            'issuing_certificates': [config['mountPoints']['issue_url']],
-            'crl_distribution_points': [config['mountPoints']['crl_dist']]
+            'issuing_certificates': config['mountPoints']['ISSUE_URL'],
+            'crl_distribution_points': config['mountPoints']['CRL_DIST']
             }
             )
     except Exception as e:
+        logger.error("Cannot set Mount Points for Issue URL and CRL Distribution")
         logger.error(e)
     
-def generateRootCA(client,commonName):
+def generateRootCA(config, client, commonName):
     '''
     This function generates the root CA.
     Args:
+        config: a configparser object
         client: an initialised instance of Vault via HVAC
         commonName: common name of the device which is the unique device ID
     '''
-    setMountPoints(client)
+    setMountPoints(config, client)
     logger.debug("Successfully set mount points")
     try:
         
@@ -116,7 +133,7 @@ def generateRootCA(client,commonName):
     except Exception as e:
         logger.error(e)
 
-def generateIntermediateCA(client,commonName):
+def generateIntermediateCA(client, commonName):
     '''
     This function generates the intermediate Certificate Authority.
     Args:
@@ -160,7 +177,6 @@ def readPKIURL(client):
     '''
     response = client.secrets.pki.read_urls()
     #print('PKI urls: {}'.format(response))
-
 
 def createRole(client, role_name, allowed, allow = 'false', ttl = '8794h'):
     '''
@@ -211,11 +227,19 @@ def listRoles(client):
     list_roles_response = client.secrets.pki.list_roles()
     print('List of available roles: {}'.format(list_roles_response))
 
-def generateCertificate(role_name, issue_url, payload_path):
+def generateCertificate(config, role_name, issue_url, payload_path):
+    '''
+    This function generates the certificate for a given payload and role.
+    Args:
+        config: a configparser object
+        role_name: The Vault role under which the certificate is generated
+        issue_url: The Vault API issue point
+        payload_path: Path to payload to fetch details for certifcate generation
+    '''
     try:
         
         headers = {
-            'X-Vault-Token': 'hvs.LIHlZAB59EnMWTJFIPaOo6qy',
+            'X-Vault-Token': config['mountPoints']['X_TOKEN'],
             'Content-Type': 'application/x-www-form-urlencoded',
             }
 
@@ -251,23 +275,12 @@ def generateCertificate(role_name, issue_url, payload_path):
         logger.error(e)
 
 
-def setRoleCA():
-    config = configparser.ConfigParser()
-    try:
-        config.read('config.ini')
-        logger.debug("Read configuration for role and root CA")
-        role = config['mountPoints']['ROLE']
-        root_issuer = config['mountPoints']['CA']
-        cert_issue = config['mountPoints']['ISSUE_CERT']
-        return role, root_issuer, cert_issue
-        
-    except Exception as e:
-        logger.error(e)
-
 if __name__ == '__main__':
 
+    config = readConfig()
+    
     try:
-        client = init_server()
+        client = init_server(config)
         delete_root_response = client.secrets.pki.delete_root()
     except Exception as e:
         logger.error(e)
@@ -278,10 +291,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
     payload_path = args.s
 
-    role, root_issuer, cert_issue = setRoleCA()
-    generateRootCA(client, root_issuer)
+    role = config['mountPoints']['ROLE']
+    root_issuer = config['mountPoints']['CA']
+    cert_issue = config['mountPoints']['ISSUE_CERT']
+    generateRootCA(config, client, root_issuer)
     generateIntermediateCA(client, root_issuer)
     createRole(client, role, root_issuer)
     #readRole(client, role)
     #listRoles(client)
-    generateCertificate(role, cert_issue, payload_path)
+    generateCertificate(config, role, cert_issue, payload_path)
