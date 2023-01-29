@@ -41,7 +41,7 @@ def verify_certificate_chain(cert_path, trusted_path):
         return True
 
     except Exception as e:
-        print(e)
+        print("Reason: " + str(e).title())
         return False
     
 if __name__ == "__main__":
