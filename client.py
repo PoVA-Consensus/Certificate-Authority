@@ -69,7 +69,7 @@ def init_server(config):
     except:
         logger.error("The client is not authenticated. Check if Vault server is running.")
 
-def readConfig():
+def read_config():
     '''
     This function reads the configuration file and returns the configparser object.
     Return:
@@ -133,7 +133,7 @@ def generateRootCA(config, client, commonName):
     except Exception as e:
         logger.error(e)
 
-def generateIntermediateCA(client, commonName):
+def generate_intermediate_CA(client, commonName):
     '''
     This function generates the intermediate Certificate Authority.
     Args:
@@ -160,7 +160,7 @@ def generateIntermediateCA(client, commonName):
     f.write(sign_intermediate_response['data']['certificate'])
     f.close()
 
-def readRoles(client):
+def read_roles(client):
     '''
     This function reads all the PKI roles that have been defined.
     Args:
@@ -178,7 +178,7 @@ def readPKIURL(client):
     response = client.secrets.pki.read_urls()
     #print('PKI urls: {}'.format(response))
 
-def createRole(client, role_name, allowed, allow = 'false', ttl = '8794h'):
+def create_role(client, role_name, allowed, allow = 'false', ttl = '8794h'):
     '''
     This function creates a role.
     Args:
@@ -204,7 +204,7 @@ def createRole(client, role_name, allowed, allow = 'false', ttl = '8794h'):
     except Exception as e:
         logger.error(e)
 
-def readRole(client, role_name):
+def read_role(client, role_name):
     '''
     This function reads a given role.
     Args:
@@ -218,7 +218,7 @@ def readRole(client, role_name):
         logger.error("Could not read role: %s", role_name)
         logger.error(e)
 
-def listRoles(client):
+def list_roles(client):
     '''
     This function reads a given role.
     Args:
@@ -227,7 +227,7 @@ def listRoles(client):
     list_roles_response = client.secrets.pki.list_roles()
     print('List of available roles: {}'.format(list_roles_response))
 
-def generateCertificate(config, role_name, issue_url, payload_path):
+def generate_certificate(config, role_name, issue_url, payload_path):
     '''
     This function generates the certificate for a given payload and role.
     Args:
@@ -277,7 +277,7 @@ def generateCertificate(config, role_name, issue_url, payload_path):
 
 if __name__ == '__main__':
 
-    config = readConfig()
+    config = read_config()
     
     try:
         client = init_server(config)
@@ -295,8 +295,8 @@ if __name__ == '__main__':
     root_issuer = config['mountPoints']['CA']
     cert_issue = config['mountPoints']['ISSUE_CERT']
     generateRootCA(config, client, root_issuer)
-    generateIntermediateCA(client, root_issuer)
-    createRole(client, role, root_issuer)
-    #readRole(client, role)
-    #listRoles(client)
-    generateCertificate(config, role, cert_issue, payload_path)
+    generate_intermediate_CA(client, root_issuer)
+    create_role(client, role, root_issuer)
+    #read_role(client, role)
+    #list_roles(client)
+    generate_certificate(config, role, cert_issue, payload_path)
