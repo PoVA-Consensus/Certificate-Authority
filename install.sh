@@ -1,5 +1,6 @@
 #!/bin/bash
 
+# Usage Menu for ./install.sh
 while getopts ":a:p::h" opt; do
 	case $opt in
 		h) echo "usage $0 -p -h"
@@ -21,6 +22,7 @@ while getopts ":a:p::h" opt; do
 	esac
 done
 
+# Installing all the necessary dependencies for Vault
 #echo "Installing GPG"
 #sudo apt update && sudo apt install gpg
 #echo "Installing GPG key of HashiCorp"
@@ -36,6 +38,7 @@ done
 #     echo "Vault has not been installed."
 # fi
 
+# Checking if mount Path for Vault has been parsed as named parameter
 if [ -z "$VAULT_MOUNT_PATH" ]
 then
 	echo "Path to mount Vault is empty"
@@ -43,6 +46,7 @@ then
 
 fi
 
+# Checking if the path is valid
 if [ -d "$VAULT_MOUNT_PATH" ] 
 then
     echo "$VAULT_MOUNT_PATH exists." 
@@ -53,13 +57,16 @@ fi
 
 PORT=8200
 
+# Checking if the port is available
 nc -z localhost $PORT
 RESULT=$?
 
 if [ $RESULT -eq 0 ]; then
 	echo "Error: Port $PORT is listening and not free"
+	exit 1
 fi
 
+# Config file generation to initialise vault
 BASE="127.0.0.1:"
 ADDRESS="$BASE""$PORT"
 API_ADDR="http://""$BASE""$PORT"
@@ -76,3 +83,9 @@ tls_disable = 1
 }
 api_addr = "$API_ADDR"
 EOF
+
+echo "Start Vault server with configurations"
+vault server -config=config.hcl &>/dev/null & 
+#vault server -config=config.hcl &
+source ./vault.sh
+# export VAULT_ADDR='$API_ADDR"
