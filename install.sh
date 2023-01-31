@@ -85,7 +85,9 @@ api_addr = "$API_ADDR"
 EOF
 
 echo "Start Vault server with configurations"
-vault server -config=config.hcl &>/dev/null & 
+vault server -config=config.hcl >/dev/null 2>&1 &
+
 #vault server -config=config.hcl &
+sleep 1
 source ./vault.sh
 # export VAULT_ADDR='$API_ADDR"
