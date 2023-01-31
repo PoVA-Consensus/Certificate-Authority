@@ -1,6 +1,144 @@
 # Certificate-Authority
 
-## Installing and setting up Vault Secrets Engine 
+- [Certificate-Authority](#certificate-authority)
+  * [Vault Installation and Certificate Authority set-up](#vault-installation-and-certificate-authority-set-up)
+  * [Digital Profile Generation](#digital-profile-generation)
+  * [Creating Device Certificates with a given Digital Profile](#creating-device-certificates-with-a-given-device-id)
+  * [Reading the certificate](#reading-the-certificate)
+- [Verification of Device Certificates](#verification-of-device-certificates)
+  * [Usage](#usage)
+  * [Using a valid device certificate](#using-a-valid-device-certificate)
+  * [Using an invalid device certificate](#using-an-invalid-device-certificate)
+- [Manual installation and set-up of Vault Secrets Engine](#manual-installation-and-set-up-of-vault-secrets-engine)
+    * [Install Vault](#install-vault)
+    * [Initialising Vault](#initialising-vault)
+
+## Vault Installation and Certificate Authority set-up
+Run the following script:
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ /install.sh -h
+Usage: ./install.sh [options]
+Options:
+-p, --path      Required path argument for Vault mount
+-h, --help      Show this help message
+               
+```
+This will install all the dependencies for Vault (if not yet installed), initialise and store the unseal keys. Additionally, it will use these tokens to unseal Vault and tune the secrets engine at ```pki/```
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ ./install.sh -p .
+```
+
+## Digital Profile Generation
+The Digital Profile of a device is a 160-bit hash of the Manufacturer name, Device name and MAC address. <p></p>
+To fetch the aforementioned attributes, run:
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ ./profile.sh
+```
+The attributes will be stored as a JSON.
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ .cat device_info.json | python3 -m json.tool
+{
+    "Manufacturer_name": "LENOVO",
+    "Device_name": "Lenovo YOGA 720-15IKB",
+    "MAC_address": "f8:59:71:0e:3b:cf"
+}
+```
+To generate the digital profile, run:
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ python3 profile.py -h                 
+usage: profile.py [-h] -f F
+
+options:
+  -h, --help  show this help message and exit
+  -f F        Path to JSON file containing details of device
+```
+
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ python3 profile.py -f device_info.json
+BEC452C7-B079-4C99-57CC
+```
+The digital profile is formatted to 8-4-4-4 split entailing 20 characters (160 bits).
+
+## Creating Device Certificates with a given Digital Profile
+Create a payload JSON file containing the Device Serial number and Time-To-Live (TTL). A sample payload JSON file is as follows:
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ cat payload.json 
+```
+```console
+{
+    "common_name": "EB7553CD-A667-48BC-B809.e48BC-B809",
+    "ttl": "24h"
+}
+```
+Run the Python File and provide the path to the payload file after the ```-s``` flag:
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ python3 client.py -s payload.json 
+```
+```console
+2022-12-04 00:05:38,192 |     INFO | The Vault Client has been authenticated
+2022-12-04 00:05:38,201 |    DEBUG | Read configuration for role and root CA
+2022-12-04 00:05:38,202 |    DEBUG | Read configuration for mount points
+2022-12-04 00:05:38,208 |    DEBUG | Successfully set mount points
+2022-12-04 00:05:38,574 |     INFO | Root CA certificate written to rootCA.pem
+2022-12-04 00:05:38,854 |     INFO | Generated CSR for Intermediate CA Certificate
+2022-12-04 00:05:38,862 |     INFO | Successfully signed Intermediate CA Certificate
+2022-12-04 00:05:38,867 |     INFO | Created role: Certificates
+2022-12-04 00:05:38,868 |     INFO | <Response [204]>
+2022-12-04 00:05:39,277 |     INFO | Certificate written to EB7553CD-A667-48BC-B809.e48BC-B809.pem
+2022-12-04 00:05:39,277 |     INFO | Private Key written to EB7553CD-A667-48BC-B809.e48BC-B809.key
+```
+
+## Reading the certificate
+We can use openssl commands to view the certificate. In order to do this, run:
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ openssl x509 -in <PEM-encoded certificate file name> -noout -text
+```
+To read the private key, run:
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ openssl rsa -in EB7553CD-A667-48BC-B809.e48BC-B809.key -check
+```
+
+# Verification of Device Certificates
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ vault read /pki/cert/ca_chain > chain.pem
+```
+This Vault PKI endpoint extracts the CA chain listing all the certificates in the chain of trust. Store that as a PEM-encoded file.
+
+## Usage
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ python3 verify.py -h 
+```
+```console
+usage: verify.py [-h] -c C -v V
+
+options:
+  -h, --help  show this help message and exit
+  -c C        Enter the path to the PEM encoded certificate to be verified
+  -v V        Path to the trusted chain
+```
+
+## Using a valid device certificate
+This certificate has been generated by the CA.
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ python3 verify.py -c EB7553CD-A667-48BC-B809.e48BC-B809.pem -v chain.pem
+```
+```console
+Valid certificate
+```
+
+## Using an invalid device certificate
+Generate a self-signed certificate generated via openSSL
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 365
+```
+```console
+pavithra@client:~/Desktop/Certificate-Authority$ python3 verify.py -c cert.pem -v chain.pem
+```
+```console
+Reason: Self-Signed Certificate
+Invalid certificate
+```
+## Manual installation and set-up of Vault Secrets Engine 
 Install GPG which is a free implementation of OpenPGP. This permits us to sign and encrypt data. GPG offers a versatile key management.
 ```console
 pavithra@client:~/Desktop/Certificate-Authority$ sudo apt update && sudo apt install gpg
@@ -49,7 +187,7 @@ A Vault server can be set using a config file. The storage and listener paramete
 ```console
 pavithra@client:~/Desktop/Certificate-Authority$ cat config.hcl 
 backend "file" {
-path = "/home/pavithra/Desktop/Cert-Auth"
+path = "/home/pavithra/Desktop/Cert-Authority"
 }
 listener "tcp" {
 address = "127.0.0.1:8200"
@@ -101,94 +239,6 @@ Success! Enabled the pki secrets engine at: pki/
 pavithra@client:~/Desktop/Certificate-Authority$ vault secrets tune -max-lease-ttl=8760h pki
 Success! Tuned the secrets engine at: pki/
 ```
-
-## Automating Vault PKI Engine Unsealing and Login
-Create a keys.txt file and store any 3 (threshold number) of the unseal keys followed by the root token in separate lines.
-Run the following script to set up Vault:
-```console
-pavithra@client:~/Desktop/Certificate-Authority$ source vault.sh
-```
-
-## Creating Device Certificates with a given Device ID
-Create a payload JSON file containing the Device Serial number and Time-To-Live (TTL). A sample payload JSON file is as follows:
-```console
-pavithra@client:~/Desktop/Certificate-Authority$ cat payload.json 
-```
-```console
-{
-    "common_name": "EB7553CD-A667-48BC-B809.e48BC-B809",
-    "ttl": "24h"
-}
-```
-Run the Python File and provide the path to the payload file after the ```-s``` flag:
-```console
-pavithra@client:~/Desktop/Certificate-Authority$ python3 client.py -s payload.json 
-```
-```console
-2022-12-04 00:05:38,192 |     INFO | The Vault Client has been authenticated
-2022-12-04 00:05:38,201 |    DEBUG | Read configuration for role and root CA
-2022-12-04 00:05:38,202 |    DEBUG | Read configuration for mount points
-2022-12-04 00:05:38,208 |    DEBUG | Successfully set mount points
-2022-12-04 00:05:38,574 |     INFO | Root CA certificate written to rootCA.pem
-2022-12-04 00:05:38,854 |     INFO | Generated CSR for Intermediate CA Certificate
-2022-12-04 00:05:38,862 |     INFO | Successfully signed Intermediate CA Certificate
-2022-12-04 00:05:38,867 |     INFO | Created role: Certificates
-2022-12-04 00:05:38,868 |     INFO | <Response [204]>
-2022-12-04 00:05:39,277 |     INFO | Certificate written to EB7553CD-A667-48BC-B809.e48BC-B809.pem
-2022-12-04 00:05:39,277 |     INFO | Private Key written to EB7553CD-A667-48BC-B809.e48BC-B809.key
-```
-
-## Reading the certificate
-We can use openssl commands to view the certificate. In order to do this, run:
-```console
-pavithra@client:~/Desktop/Certificate-Authority$ openssl x509 -in <PEM-encoded certificate file name> -noout -text
-```
-To read the private key, run:
-```console
-pavithra@client:~/Desktop/Certificate-Authority$ openssl rsa -in EB7553CD-A667-48BC-B809.e48BC-B809.key -check
-```
-
-# Verification of Device Certificates
-```console
-pavithra@client:~/Desktop/Certificate-Authority$ vault read /pki/cert/ca_chain >> chain.pem
-```
-This Vault PKI endpoint extracts the CA chain listing all the certificates in the chain of trust. Store that as a PEM-encoded file.
-
-## Usage
-```console
-pavithra@client:~/Desktop/Certificate-Authority$ python3 verify.py -h 
-```
-```console
-usage: verify.py [-h] -c C -v V
-
-options:
-  -h, --help  show this help message and exit
-  -c C        Enter the path to the PEM encoded certificate to be verified
-  -v V        Path to the trusted chain
-```
-
-## Using a valid device certificate
-This certificate has been generated by the CA.
-```console
-pavithra@client:~/Desktop/Certificate-Authority$ python3 verify.py -c EB7553CD-A667-48BC-B809.e48BC-B809.pem -v chain.pem
-```
-```console
-Valid certificate
-```
-
-## Using an invalid device certificate
-Generate a self-signed certificate generated via openSSL
-```console
-pavithra@client:~/Desktop/Certificate-Authority$ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 365
-```
-```console
-pavithra@client:~/Desktop/Certificate-Authority$ python3 verify.py -c cert.pem -v chain.pem
-```
-```console
-Reason: Self-Signed Certificate
-Invalid certificate
-```
-
 
 
 
