@@ -203,8 +203,7 @@ pavithra@client:~/Desktop/Certificate-Authority$ vault server -config=config.hcl
 The vault server will start and all log data will be streamed. In case of error in initializing a TCP listener due to bind address already being in use, proceed to kill the process.
 
 ```console
-pavithra@client:~/Desktop/Certificate-Authority$ sudo lsof -ti:8200
-pavithra@client:~/Desktop/Certificate-Authority$ kill <pid>
+pavithra@client:~/Desktop/Certificate-Authority$ sudo fuser -k 8200/tcp
 ```
 ### Initialising Vault
 In another terminal, initialise Vault.
