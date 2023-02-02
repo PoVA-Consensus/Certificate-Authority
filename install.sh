@@ -82,7 +82,6 @@ if [[ $? -ne 0 ]]
 then
     echo "Vault has not been installed."
 	install
-	exit 1
 fi
 
 # Checking if the path is valid
