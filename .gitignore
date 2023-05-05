@@ -1,5 +1,5 @@
 *.log
-unseal.txt
+*.txt
 *.hcl
 *.pem
 *.ini

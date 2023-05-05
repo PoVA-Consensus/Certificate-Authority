@@ -1,20 +1,23 @@
 import hashlib
 import json
 import argparse
+from Crypto.Hash import keccak
 
-def generate_device_id (MAC_addr, manufacturer_name, device_name):
-    '''
-    This function returns the SHA256 hashed value of the attributes passed as args.
+def keccak_hash(MAC_addr, manufacturer_name, device_name):
+    """
+    Computes the Keccak hash of a string using the sha3 module in the Crypto package.
     Args:
         MAC_addr (str): The MAC address of the device
         manufacturer_name (str): The device manufacturer name
         device_name (str): The device name
     Return:
-        The SHA256 hashed result of the attributes concatenated
-    '''
+        The Keccak hashed result of the attributes concatenated
+    """
     attributes_concatenate = str(MAC_addr).lower() + str(manufacturer_name).lower() + str(device_name).lower()
-    device_id = hashlib.sha256(attributes_concatenate.encode()).hexdigest()
-    return device_id
+    hash_object = keccak.new(digest_bits=256)
+    hash_object.update(attributes_concatenate.encode('utf-8'))
+    hex_digest = hash_object.hexdigest()
+    return hex_digest
 
 def read_details(file_path):
     '''
@@ -37,6 +40,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     payload_path = args.f
     MAC_addr, manufacturer_name, device_name = read_details(payload_path)
-    device_id = generate_device_id(MAC_addr, manufacturer_name, device_name)[0:20]
-    print(device_id[0:8].upper() + "-" + device_id[8:12].upper() + "-" + device_id[12:16].upper() + "-" + device_id[16:].upper())
+    device_id = keccak_hash(MAC_addr, manufacturer_name, device_name)
+    print(device_id)
     #print(generate_device_id(MAC_addr, manufacturer_name, device_name)[0:20])

@@ -149,4 +149,4 @@ fi
 
 vault secrets enable pki
 vault secrets tune -max-lease-ttl=87600h pki
-
+export VAULT_ADDR='http://127.0.0.1:8200'
